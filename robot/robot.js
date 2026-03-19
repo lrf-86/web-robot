@@ -10311,12 +10311,30 @@
 		html.push('<img src="'+ _con.logo +'"/>');
 		html.push('<span>'+ _con.title +'</span></div>');
 		html.push('<div class="'+ cssfix +'header-nav">');
+		//导出按钮下拉菜单
+		html.push('<div class="'+ cssfix +'export-menu">');
+		html.push('<a href="javascript:void(0);" class="'+ cssfix +'icon-export"><em class="'+ cssfix +'icon"></em>导出</a>');
+		html.push('<div class="'+ cssfix +'export-dropdown">');
+		html.push('<a href="javascript:void(0);" class="'+ cssfix +'export-txt">导出TXT</a>');
+		html.push('<a href="javascript:void(0);" class="'+ cssfix +'export-json">导出JSON</a>');
+		html.push('</div></div>');
 
 		html.push('<a href="javascript:void(0);" class="'+ cssfix +'icon-max'+ (_con.ismax ? ' '+ cssfix +'icon-nor' : '') +'"><em class="'+ cssfix +'icon"></em></a>');
 
 		html.push('<a href="javascript:void(0);" class="'+ cssfix +'icon-clo"><em class="'+ cssfix +'icon"></em></a>');
 		html.push('</div>');
 		html.push('</div>');
+		//导出按钮样式
+		html.push('<style>');
+		html.push('.'+ cssfix +'export-menu{position:relative;display:inline-block;vertical-align:top;margin-right:10px;}');
+		html.push('.'+ cssfix +'export-menu .'+ cssfix +'icon-export{display:inline-block;padding:0 12px;height:40px;line-height:40px;color:#fff;text-decoration:none;font-size:14px;cursor:pointer;}');
+		html.push('.'+ cssfix +'export-menu .'+ cssfix +'icon-export:hover{background-color:rgba(255,255,255,0.2);}');
+		html.push('.'+ cssfix +'export-dropdown{display:none;position:absolute;top:100%;right:0;min-width:120px;background-color:#fff;border:1px solid #ddd;border-radius:4px;box-shadow:0 2px 8px rgba(0,0,0,0.15);z-index:1000;}');
+		html.push('.'+ cssfix +'export-menu:hover .'+ cssfix +'export-dropdown{display:block;}');
+		html.push('.'+ cssfix +'export-dropdown a{display:block;padding:10px 15px;color:#333;text-decoration:none;font-size:13px;white-space:nowrap;}');
+		html.push('.'+ cssfix +'export-dropdown a:hover{background-color:#f5f5f5;color:#20a56e;}');
+		html.push('.'+ cssfix +'export-dropdown .'+ cssfix +'export-txt{border-bottom:1px solid #eee;}');
+		html.push('</style>');
 		//content
 		html.push('<div class="'+ cssfix +'content">');
 			html.push('<ul class="'+ cssfix +'slide" '+ (!_con.showSideBtn ? 'style="visibility: hidden;"' : '') +'>');
@@ -10530,6 +10548,8 @@
 			/*客户端用户名*/
 			, 'user': _userName
 		}, config);
+		/*聊天记录存储数组*/
+		this.chatHistory = [];
 		this.init();
 	};
 
@@ -11031,17 +11051,30 @@
 			_this.resize();
 			_this.move('.'+ cssfix +'header');
 			$(win).resize($.proxy(_this.resize, this));
+			//绑定导出按钮事件
+			$('.'+ cssfix +'export-txt', $wrap).on('click', $.proxy(_this.exportTxt, _this));
+			$('.'+ cssfix +'export-json', $wrap).on('click', $.proxy(_this.exportJson, _this));
 		}
 		//显示欢迎词
 		, 'welcome': function(){
 			var _this = this
-				, _con = _this.con;
+				, _con = _this.con
+				, _now = new Date();
 			if(!!_this.welcomed){
 				return false;
 			};
 			_this.welcomed = true;
-			_this.chat.append(_this.cReplyEle({'text': _con.welcome.replace('$name', _con.nick)}));
+			var welcomeText = _con.welcome.replace('$name', _con.nick);
+			_this.chat.append(_this.cReplyEle({'text': welcomeText}));
 			_this.scroll();
+			/*存储欢迎消息*/
+			_this.chatHistory.push({
+				type: 'robot',
+				text: welcomeText,
+				nick: _con.nick,
+				time: _dateFormat.call(_now, 'hh:mm:ss'),
+				timestamp: _now.getTime()
+			});
 		}
 		//切换右边的选项卡
 		, 'tab': function(e){
@@ -11161,12 +11194,22 @@
 			if(text === ""){
 				return false;
 			};
-			var _con = _this.con;
+			var _con = _this.con
+				, _now = new Date();
 			var $question = _this.cSendEle({'text': text})
 				, $answer = _this.cReplyEle({'text': '<img src="http://img.alicdn.com/imgextra/i3/TB1tAEJJpXXXXXraXXXtKXbFXXX.gif"/>'});
 			_this.chat.append($question);
 			_this.chat.append($answer);
 			_this.scroll();
+			/*存储用户消息*/
+			_this.chatHistory.push({
+				type: 'user',
+				text: text,
+				nick: '我',
+				time: _dateFormat.call(_now, 'hh:mm:ss'),
+				timestamp: _now.getTime()
+			});
+			var _answerText = '';
 			_jsonp({
 				'url': apiUrl + _con.appid +'/answer'
 				, 'data' : {'q': encodeURIComponent(text)}
@@ -11189,10 +11232,21 @@
 					}else{
 						html = !data.answer ? '&nbsp;' : data.answer;
 					}
+					_answerText = data.answer;
 					$('.'+ cssfix +'msg-mm .'+ cssfix +'htmcont', $answer).html(html).on('click', '.'+ cssfix +'sug-item', function(){
 						_this.send($(this).attr('rel').replace(/^[\d]+\./, ''));
 					});
-					$('.'+ cssfix +'chat-headimg span', $answer).text(_con.nick +' '+ _dateFormat.call(new Date(),'hh:mm:ss'));
+					var _replyTime = new Date()
+						, _timeStr = _dateFormat.call(_replyTime,'hh:mm:ss');
+					$('.'+ cssfix +'chat-headimg span', $answer).text(_con.nick +' '+ _timeStr);
+					/*存储机器人回复消息*/
+					_this.chatHistory.push({
+						type: 'robot',
+						text: _answerText,
+						nick: _con.nick,
+						time: _timeStr,
+						timestamp: _replyTime.getTime()
+					});
 					_this.scroll();
 				}
 				, 'error': function(){
@@ -11336,6 +11390,63 @@
 			});
 			return $ele;
 		}
+		//导出聊天记录为TXT格式
+		, 'exportTxt': function(){
+			var _this = this
+				, _con = _this.con
+				, history = _this.chatHistory;
+			if(history.length === 0){
+				alert('暂无聊天记录可导出');
+				return;
+			}
+			var content = '聊天记录导出\n';
+			content += '导出时间：' + _dateFormat.call(new Date(), 'yyyy-MM-dd hh:mm:ss') + '\n';
+			content += (new Array(51)).join('=') + '\n\n';
+			for(var i = 0; i < history.length; i++){
+				var item = history[i];
+				content += '[' + item.time + '] ' + item.nick + '：\n';
+				content += item.text + '\n\n';
+			}
+			content += (new Array(51)).join('=') + '\n';
+			content += '共 ' + history.length + ' 条消息\n';
+			_this.downloadFile(content, 'chat_history_' + _dateFormat.call(new Date(),'yyyyMMdd_hhmmss') + '.txt', 'text/plain');
+		}
+		//导出聊天记录为JSON格式
+		, 'exportJson': function(){
+			var _this = this
+				, _con = _this.con
+				, history = _this.chatHistory;
+			if(history.length === 0){
+				alert('暂无聊天记录可导出');
+				return;
+			}
+			var data = {
+				exportTime: new Date().getTime(),
+				exportTimeStr: _dateFormat.call(new Date(), 'yyyy-MM-dd hh:mm:ss'),
+				total: history.length,
+				messages: history
+			};
+			var content = JSON.stringify(data, null, 2);
+			_this.downloadFile(content, 'chat_history_' + _dateFormat.call(new Date(),'yyyyMMdd_hhmmss') + '.json', 'application/json');
+		}
+		//下载文件
+		, 'downloadFile': function(content, filename, mimeType){
+			var blob = new Blob([content], {type: mimeType + ';charset=utf-8;'});
+			// IE浏览器兼容
+			if(window.navigator.msSaveOrOpenBlob){
+				window.navigator.msSaveBlob(blob, filename);
+			}else{
+				var url = URL.createObjectURL(blob);
+				var a = document.createElement('a');
+				a.href = url;
+				a.download = filename;
+				// 兼容Firefox
+				document.body.appendChild(a);
+				a.click();
+				document.body.removeChild(a);
+				URL.revokeObjectURL(url);
+			}
+		}
 	};
 	//加载外部css样式
 	(function(){
@@ -11382,7 +11493,7 @@
 		}, 1000)
 		head.appendChild(cssFile);
 	})();
-})(window, {
+})(window, $.extend({
 	'mod': window.location.href.indexOf('mobile')> 0 ? 'normal' : 'mini'
 	//初始时是否最大化窗口，PC网页时有效						
 	//, ismax: false
@@ -11458,4 +11569,4 @@
 		//反馈颜色背景
 		, 'color': '#20a56e'
 	}
-});
+}, (window.smartnlpRobot && window.smartnlpRobot.config) || {}));
